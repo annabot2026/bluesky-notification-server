@@ -3,13 +3,21 @@
 ## Environment Variables Required
 
 ```bash
-export BLUESKY_HANDLE="annabot2026"
+export BLUESKY_HANDLE="anna.yapfest.club"
 export BLUESKY_PASSWORD="your_bluesky_app_password"
 export LETTA_API_KEY="your_letta_api_key"
 export LETTA_AGENT_ID="your_agent_id"
 ```
 
-**Important:** `BLUESKY_PASSWORD` must be an app password, not your account password. You can generate one in your Bluesky account settings.
+## Environment Variables Optional
+
+```bash
+export BLUESKY_PDS_URL="https://yapfest.club"  # Defaults to https://api.bsky.app if not set
+```
+
+**Important Notes:**
+- `BLUESKY_PASSWORD` must be an app password, not your account password. Generate one in your Bluesky account settings.
+- `BLUESKY_PDS_URL` should be set if you're using a custom PDS (Personal Data Server). For example, if your handle is `anna.yapfest.club`, you would use `https://yapfest.club`. If using a standard Bluesky account, leave this unset or use `https://api.bsky.app`.
 
 ## Installation
 
@@ -21,6 +29,7 @@ pip install -r requirements.txt
 
 ```
 requests>=2.31.0
+python-dotenv>=1.0.0
 ```
 
 ## Running the Server
@@ -30,7 +39,7 @@ python server.py
 ```
 
 The server will:
-1. Authenticate with Bluesky using your handle and app password
+1. Authenticate with your Bluesky PDS using your handle and app password
 2. Poll Bluesky notifications every 5 minutes
 3. Only send a message to Letta if new notifications exist
 4. Track the last cursor in `state.json` to avoid duplicate notifications
