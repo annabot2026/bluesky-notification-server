@@ -45,7 +45,10 @@ class BlueskyNotificationPoller:
         """Load last cursor from state file"""
         if self.state_file.exists():
             with open(self.state_file) as f:
-                return json.load(f)
+                state = json.load(f)
+                print(f"[DEBUG] Loaded state from file: {state}")
+                return state
+        print(f"[DEBUG] State file does not exist, initializing new state")
         return {
             "last_cursor": None,
             "last_check_time": None
@@ -54,6 +57,7 @@ class BlueskyNotificationPoller:
     def _save_state(self):
         """Save current state to file"""
         self.state["last_check_time"] = datetime.now().isoformat()
+        print(f"[DEBUG] Saving state to file: {self.state}")
         with open(self.state_file, 'w') as f:
             json.dump(self.state, f, indent=2)
     
@@ -92,7 +96,10 @@ class BlueskyNotificationPoller:
         
         # Include cursor if we have one
         if self.state.get("last_cursor"):
+            print(f"[DEBUG] Using cursor: {self.state.get('last_cursor')}")
             params["cursor"] = self.state["last_cursor"]
+        else:
+            print(f"[DEBUG] No cursor available, fetching from beginning")
         
         try:
             response = requests.get(
@@ -102,7 +109,13 @@ class BlueskyNotificationPoller:
                 timeout=10
             )
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+            print(f"[DEBUG] API response keys: {result.keys()}")
+            if "cursor" in result:
+                print(f"[DEBUG] Received cursor: {result['cursor']}")
+            else:
+                print(f"[DEBUG] No cursor in API response")
+            return result
         except requests.RequestException as e:
             print(f"Error fetching notifications: {e}")
             # Clear token on auth errors so we re-authenticate next time
