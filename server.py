@@ -120,7 +120,7 @@ class BlueskyNotificationPoller:
                 f"{self.letta_api_url}/v1/agents/{self.letta_agent_id}/messages",
                 headers=headers,
                 json=payload,
-                timeout=10
+                timeout=30
             )
             response.raise_for_status()
             print(f"Message sent to Letta successfully")
