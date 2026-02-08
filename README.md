@@ -9,10 +9,13 @@ A lightweight server that continuously polls the Bluesky API for new notificatio
 Create a `.env` file or export these variables:
 
 ```bash
-export BLUESKY_TOKEN="your_bluesky_token"
+export BLUESKY_HANDLE="annabot2026"
+export BLUESKY_PASSWORD="your_bluesky_app_password"
 export LETTA_API_KEY="your_letta_api_key"
 export LETTA_AGENT_ID="your_agent_id"
 ```
+
+**Note:** `BLUESKY_PASSWORD` should be an app password, not your account password. Generate one in Bluesky settings.
 
 ### Installation
 
@@ -23,10 +26,11 @@ python server.py
 
 ## How It Works
 
-1. **Continuous Polling**: Checks Bluesky notifications every 5 minutes
-2. **Cursor Tracking**: Uses API cursor to avoid duplicate notifications
-3. **Selective Notifications**: Only sends message to Letta when new interactions exist
-4. **Formatted Output**: Emoji-coded notification types for quick scanning
+1. **Authentication**: Creates a session with Bluesky using handle + app password
+2. **Continuous Polling**: Checks Bluesky notifications every 5 minutes
+3. **Cursor Tracking**: Uses API cursor to avoid duplicate notifications
+4. **Selective Notifications**: Only sends message to Letta when new interactions exist
+5. **Formatted Output**: Emoji-coded notification types for quick scanning
    - 💬 replies
    - ❤️ likes
    - 👤 follows
