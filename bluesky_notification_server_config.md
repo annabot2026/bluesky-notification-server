@@ -1,35 +1,28 @@
-# Bluesky Notification Server Setup
+# Bluesky Notification Server Configuration
 
-## Environment Variables Required
+## Required Environment Variables
 
 ```bash
-export BLUESKY_HANDLE="anna.yapfest.club"
-export BLUESKY_PASSWORD="your_bluesky_app_password"
+export BLUESKY_HANDLE="your.handle.com"
+export BLUESKY_PASSWORD="your_app_password"
 export LETTA_API_KEY="your_letta_api_key"
-export LETTA_AGENT_ID="your_agent_id"
+export LETTA_AGENT_ID="agent-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 ```
 
-## Environment Variables Optional
+**Important:** `BLUESKY_PASSWORD` must be an app password, not your account password. Generate one in your Bluesky account settings.
+
+## Optional Environment Variables
 
 ```bash
-export BLUESKY_PDS_URL="https://yapfest.club"  # Defaults to https://api.bsky.app if not set
+export BLUESKY_PDS_URL="https://your-pds.example.com"  # Defaults to https://api.bsky.app
+export LETTA_API_URL="https://api.letta.com"           # Defaults to http://localhost:8080
+export LETTA_CONVERSATION_ID="conv-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"  # Route to specific conversation
 ```
-
-**Important Notes:**
-- `BLUESKY_PASSWORD` must be an app password, not your account password. Generate one in your Bluesky account settings.
-- `BLUESKY_PDS_URL` should be set if you're using a custom PDS (Personal Data Server). For example, if your handle is `anna.yapfest.club`, you would use `https://yapfest.club`. If using a standard Bluesky account, leave this unset or use `https://api.bsky.app`.
 
 ## Installation
 
 ```bash
 pip install -r requirements.txt
-```
-
-## Requirements
-
-```
-requests>=2.31.0
-python-dotenv>=1.0.0
 ```
 
 ## Running the Server
@@ -39,25 +32,56 @@ python server.py
 ```
 
 The server will:
-1. Authenticate with your Bluesky PDS using your handle and app password
-2. Poll Bluesky notifications every 5 minutes
-3. Only send a message to Letta if new notifications exist
-4. Track the last cursor in `state.json` to avoid duplicate notifications
-5. Format notifications nicely with emoji indicators:
-   - 💬 for replies
-   - ❤️ for likes
-   - 👤 for follows
-   - 🔄 for reposts
+1. Authenticate with your Bluesky PDS
+2. Poll notifications every 5 minutes
+3. Send only NEW notifications to Letta (duplicates are filtered)
+4. Store notification history in `state.json` for deduplication
+
+## Notification Format
+
+Notifications are sent as formatted messages with emoji indicators:
+
+```
+🔔 You have 3 new Bluesky notifications:
+
+• 💬 alice replied: nice post!
+• ❤️ bob liked your post
+• 👤 charlie followed you
+```
 
 ## State Management
 
-The server maintains `state.json` with:
-- `last_cursor`: Used by Bluesky API to fetch only new notifications
-- `last_check_time`: Timestamp of last successful poll (for debugging)
+The server maintains `state.json` which tracks:
+
+- `seen_notification_ids`: List of notification URIs already processed
+- `last_check_time`: Timestamp of last polling cycle
+
+This prevents duplicate notifications from being sent to Letta.
+
+The server keeps track of the last 1000 notification IDs to prevent unbounded file growth.
+
+## Endpoint Routing
+
+**Without LETTA_CONVERSATION_ID:**
+```
+POST {LETTA_API_URL}/v1/agents/{LETTA_AGENT_ID}/messages
+```
+
+**With LETTA_CONVERSATION_ID:**
+```
+POST {LETTA_API_URL}/v1/conversations/{LETTA_CONVERSATION_ID}/messages
+```
+
+Use the conversation endpoint to send notifications to a specific conversation instead of the agent's default.
+
+## Supported Bluesky PDS Instances
+
+- **Bluesky (public)**: `https://api.bsky.app`
+- **Custom PDS**: Any AT Protocol-compatible PDS (e.g., `https://yapfest.club`)
 
 ## Notes
 
-- Letta API URL defaults to `http://localhost:8080` - adjust in server.py if needed
-- Poll interval is set to 300 seconds (5 minutes) by default - adjustable in server.py
-- Supports graceful shutdown with Ctrl+C
-- Session tokens are cached in memory and will be refreshed on 401 errors
+- Poll interval is 5 minutes (300 seconds) by default
+- Notification limit per poll is 50
+- Connection timeouts are set to 10 seconds (PDS) and 30 seconds (Letta)
+- Session tokens are cached in memory and re-authenticated on 401 errors
