@@ -5,8 +5,15 @@ Continuously polls Bluesky API for new notifications and sends them to Letta
 import json
 import time
 import requests
+import os
 from datetime import datetime
 from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 class BlueskyNotificationPoller:
     def __init__(self, bluesky_handle: str, bluesky_password: str, letta_api_key: str, letta_agent_id: str, state_file: str = "state.json"):
@@ -185,9 +192,7 @@ class BlueskyNotificationPoller:
 
 
 if __name__ == "__main__":
-    import os
-    
-    # Load from environment variables
+    # Load from environment variables (or .env file if python-dotenv is installed)
     bluesky_handle = os.getenv("BLUESKY_HANDLE")
     bluesky_password = os.getenv("BLUESKY_PASSWORD")
     letta_api_key = os.getenv("LETTA_API_KEY")
@@ -196,6 +201,11 @@ if __name__ == "__main__":
     if not all([bluesky_handle, bluesky_password, letta_api_key, letta_agent_id]):
         print("Error: Missing required environment variables")
         print("Required: BLUESKY_HANDLE, BLUESKY_PASSWORD, LETTA_API_KEY, LETTA_AGENT_ID")
+        print("\nYou can set these in a .env file or export them:")
+        print("  export BLUESKY_HANDLE='annabot2026'")
+        print("  export BLUESKY_PASSWORD='your_app_password'")
+        print("  export LETTA_API_KEY='your_key'")
+        print("  export LETTA_AGENT_ID='your_id'")
         exit(1)
     
     poller = BlueskyNotificationPoller(bluesky_handle, bluesky_password, letta_api_key, letta_agent_id)
