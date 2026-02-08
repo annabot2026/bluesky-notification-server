@@ -42,7 +42,7 @@ class BlueskyNotificationPoller:
         self.state = self._load_state()
     
     def _load_state(self) -> dict:
-        """Load last cursor from state file"""
+        """Load last seen timestamp from state file"""
         if self.state_file.exists():
             with open(self.state_file) as f:
                 state = json.load(f)
@@ -50,7 +50,7 @@ class BlueskyNotificationPoller:
                 return state
         print(f"[DEBUG] State file does not exist, initializing new state")
         return {
-            "last_cursor": None,
+            "last_seen_at": None,
             "last_check_time": None
         }
     
@@ -94,12 +94,12 @@ class BlueskyNotificationPoller:
             "limit": 50
         }
         
-        # Include cursor if we have one
-        if self.state.get("last_cursor"):
-            print(f"[DEBUG] Using cursor: {self.state.get('last_cursor')}")
-            params["cursor"] = self.state["last_cursor"]
+        # Use seenAt timestamp if we have one (for custom PDS that doesn't support cursor)
+        if self.state.get("last_seen_at"):
+            print(f"[DEBUG] Using seenAt: {self.state.get('last_seen_at')}")
+            params["seenAt"] = self.state["last_seen_at"]
         else:
-            print(f"[DEBUG] No cursor available, fetching from beginning")
+            print(f"[DEBUG] No seenAt available, fetching from beginning")
         
         try:
             response = requests.get(
@@ -111,10 +111,10 @@ class BlueskyNotificationPoller:
             response.raise_for_status()
             result = response.json()
             print(f"[DEBUG] API response keys: {result.keys()}")
-            if "cursor" in result:
-                print(f"[DEBUG] Received cursor: {result['cursor']}")
+            if "seenAt" in result:
+                print(f"[DEBUG] Received seenAt: {result['seenAt']}")
             else:
-                print(f"[DEBUG] No cursor in API response")
+                print(f"[DEBUG] No seenAt in API response")
             return result
         except requests.RequestException as e:
             print(f"Error fetching notifications: {e}")
@@ -180,9 +180,9 @@ class BlueskyNotificationPoller:
             self._save_state()
             return
         
-        # Update cursor for next poll
-        if "cursor" in result:
-            self.state["last_cursor"] = result["cursor"]
+        # Update seenAt timestamp for next poll
+        if "seenAt" in result:
+            self.state["last_seen_at"] = result["seenAt"]
         
         # Format notification summary
         count = len(notifications)
