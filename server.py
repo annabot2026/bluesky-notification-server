@@ -32,6 +32,8 @@ class BlueskyNotificationPoller:
         print(f"[DEBUG] Using Letta API URL: {self.letta_api_url}")
         if self.letta_conversation_id:
             print(f"[DEBUG] Using Letta Conversation ID: {self.letta_conversation_id}")
+        else:
+            print(f"[DEBUG] Using Letta Agent ID: {self.letta_agent_id}")
         
         # Session token will be set after authentication
         self.session_token = None
@@ -109,7 +111,7 @@ class BlueskyNotificationPoller:
             return {"notifications": []}
     
     def _send_to_letta(self, message: str):
-        """Send notification message to Letta agent"""
+        """Send notification message to Letta agent or conversation"""
         headers = {
             "Authorization": f"Bearer {self.letta_api_key}",
             "Content-Type": "application/json"
@@ -118,13 +120,15 @@ class BlueskyNotificationPoller:
             "input": message
         }
         
-        # Add conversation_id if specified
+        # Determine endpoint based on whether conversation_id is specified
         if self.letta_conversation_id:
-            payload["conversation_id"] = self.letta_conversation_id
+            url = f"{self.letta_api_url}/v1/conversations/{self.letta_conversation_id}/messages"
+        else:
+            url = f"{self.letta_api_url}/v1/agents/{self.letta_agent_id}/messages"
         
         try:
             response = requests.post(
-                f"{self.letta_api_url}/v1/agents/{self.letta_agent_id}/messages",
+                url,
                 headers=headers,
                 json=payload,
                 timeout=30
