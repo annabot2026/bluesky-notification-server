@@ -11,11 +11,9 @@ from pathlib import Path
 
 try:
     from dotenv import load_dotenv
-    dotenv_loaded = load_dotenv()
-    print(f"[DEBUG] python-dotenv loaded: {dotenv_loaded}")
-except ImportError as e:
-    print(f"[DEBUG] python-dotenv import failed: {e}")
-    dotenv_loaded = False
+    load_dotenv()
+except ImportError:
+    pass
 
 class BlueskyNotificationPoller:
     def __init__(self, bluesky_handle: str, bluesky_password: str, letta_api_key: str, letta_agent_id: str, bluesky_pds_url: str = "https://api.bsky.app", letta_api_url: str = "http://localhost:8080", letta_conversation_id: str = None, state_file: str = "state.json"):
@@ -27,29 +25,16 @@ class BlueskyNotificationPoller:
         self.state_file = Path(state_file)
         self.bluesky_pds_url = bluesky_pds_url
         self.letta_api_url = letta_api_url
-        self.max_tracked_ids = 1000  # Keep track of up to 1000 notification IDs
+        self.max_tracked_ids = 1000
         
-        print(f"[DEBUG] Using Bluesky PDS URL: {self.bluesky_pds_url}")
-        print(f"[DEBUG] Using Letta API URL: {self.letta_api_url}")
-        if self.letta_conversation_id:
-            print(f"[DEBUG] Using Letta Conversation ID: {self.letta_conversation_id}")
-        else:
-            print(f"[DEBUG] Using Letta Agent ID: {self.letta_agent_id}")
-        
-        # Session token will be set after authentication
         self.session_token = None
-        
-        # Load or initialize state
         self.state = self._load_state()
     
     def _load_state(self) -> dict:
         """Load state from file"""
         if self.state_file.exists():
             with open(self.state_file) as f:
-                state = json.load(f)
-                print(f"[DEBUG] Loaded state from file, tracking {len(state.get('seen_notification_ids', []))} notification IDs")
-                return state
-        print(f"[DEBUG] State file does not exist, initializing new state")
+                return json.load(f)
         return {
             "seen_notification_ids": [],
             "last_check_time": None
@@ -58,7 +43,6 @@ class BlueskyNotificationPoller:
     def _save_state(self):
         """Save current state to file"""
         self.state["last_check_time"] = datetime.now().isoformat()
-        # Keep state file size reasonable by limiting tracked IDs
         if len(self.state.get("seen_notification_ids", [])) > self.max_tracked_ids:
             self.state["seen_notification_ids"] = self.state["seen_notification_ids"][-self.max_tracked_ids:]
         with open(self.state_file, 'w') as f:
@@ -93,9 +77,7 @@ class BlueskyNotificationPoller:
         headers = {
             "Authorization": f"Bearer {self.session_token}"
         }
-        params = {
-            "limit": 50
-        }
+        params = {"limit": 50}
         
         try:
             response = requests.get(
@@ -108,7 +90,6 @@ class BlueskyNotificationPoller:
             return response.json()
         except requests.RequestException as e:
             print(f"Error fetching notifications: {e}")
-            # Clear token on auth errors so we re-authenticate next time
             if hasattr(e, 'response') and e.response.status_code == 401:
                 self.session_token = None
             return {"notifications": []}
@@ -119,25 +100,17 @@ class BlueskyNotificationPoller:
             "Authorization": f"Bearer {self.letta_api_key}",
             "Content-Type": "application/json"
         }
-        payload = {
-            "input": message
-        }
+        payload = {"input": message}
         
-        # Determine endpoint based on whether conversation_id is specified
         if self.letta_conversation_id:
             url = f"{self.letta_api_url}/v1/conversations/{self.letta_conversation_id}/messages"
         else:
             url = f"{self.letta_api_url}/v1/agents/{self.letta_agent_id}/messages"
         
         try:
-            response = requests.post(
-                url,
-                headers=headers,
-                json=payload,
-                timeout=30
-            )
+            response = requests.post(url, headers=headers, json=payload, timeout=30)
             response.raise_for_status()
-            print(f"Message sent to Letta successfully")
+            print(f"[{datetime.now().isoformat()}] Message sent to Letta")
         except requests.RequestException as e:
             print(f"Error sending to Letta: {e}")
     
@@ -165,29 +138,26 @@ class BlueskyNotificationPoller:
         result = self._get_notifications()
         notifications = result.get("notifications", [])
         
-        # Filter out notifications we've already seen
         seen_ids = set(self.state.get("seen_notification_ids", []))
         new_notifications = [n for n in notifications if n.get("uri") not in seen_ids]
         
         if not new_notifications:
-            print(f"[{datetime.now().isoformat()}] No new notifications (received {len(notifications)}, all previously seen)")
+            print(f"[{datetime.now().isoformat()}] No new notifications")
             self._save_state()
             return
         
-        # Format notification summary
         count = len(new_notifications)
         message = f"🔔 You have {count} new Bluesky notification{'s' if count != 1 else ''}:\n\n"
         
-        for notif in new_notifications[:10]:  # Limit to 10 most recent
+        for notif in new_notifications[:10]:
             message += f"• {self._format_notification(notif)}\n"
         
         if count > 10:
             message += f"\n... and {count - 10} more"
         
-        print(f"[{datetime.now().isoformat()}] Found {count} new notifications (out of {len(notifications)} total), sending to Letta")
+        print(f"[{datetime.now().isoformat()}] Found {count} new notifications, sending to Letta")
         self._send_to_letta(message)
         
-        # Track all notifications we just received
         for notif in notifications:
             notif_uri = notif.get("uri")
             if notif_uri and notif_uri not in seen_ids:
@@ -199,7 +169,6 @@ class BlueskyNotificationPoller:
         """Run continuous polling loop (default: 5 minutes)"""
         print(f"Starting Bluesky notification poller (interval: {poll_interval}s)")
         
-        # Initial authentication
         if not self._authenticate():
             print("Failed to authenticate. Exiting.")
             return
@@ -216,7 +185,6 @@ class BlueskyNotificationPoller:
 
 
 if __name__ == "__main__":
-    # Load from environment variables (or .env file if python-dotenv is installed)
     bluesky_handle = os.getenv("BLUESKY_HANDLE")
     bluesky_password = os.getenv("BLUESKY_PASSWORD")
     letta_api_key = os.getenv("LETTA_API_KEY")
@@ -225,31 +193,11 @@ if __name__ == "__main__":
     letta_api_url = os.getenv("LETTA_API_URL", "http://localhost:8080")
     letta_conversation_id = os.getenv("LETTA_CONVERSATION_ID")
     
-    # Debug output
-    print(f"[DEBUG] BLUESKY_HANDLE: {bluesky_handle}")
-    print(f"[DEBUG] BLUESKY_PASSWORD: {'*' * len(bluesky_password) if bluesky_password else None}")
-    print(f"[DEBUG] LETTA_API_KEY: {'*' * len(letta_api_key) if letta_api_key else None}")
-    print(f"[DEBUG] LETTA_AGENT_ID: {letta_agent_id}")
-    print(f"[DEBUG] BLUESKY_PDS_URL: {bluesky_pds_url}")
-    print(f"[DEBUG] LETTA_API_URL: {letta_api_url}")
-    if letta_conversation_id:
-        print(f"[DEBUG] LETTA_CONVERSATION_ID: {letta_conversation_id}")
-    
     if not all([bluesky_handle, bluesky_password, letta_api_key, letta_agent_id]):
-        print("\nError: Missing required environment variables")
+        print("Error: Missing required environment variables")
         print("Required: BLUESKY_HANDLE, BLUESKY_PASSWORD, LETTA_API_KEY, LETTA_AGENT_ID")
-        print("Optional: BLUESKY_PDS_URL (defaults to https://api.bsky.app)")
-        print("Optional: LETTA_API_URL (defaults to http://localhost:8080)")
-        print("Optional: LETTA_CONVERSATION_ID (to send to a specific conversation)")
-        print("\nYou can set these in a .env file or export them:")
-        print("  export BLUESKY_HANDLE='anna.yapfest.club'")
-        print("  export BLUESKY_PASSWORD='your_app_password'")
-        print("  export LETTA_API_KEY='your_key'")
-        print("  export LETTA_AGENT_ID='your_id'")
-        print("  export BLUESKY_PDS_URL='https://yapfest.club'  # Optional")
-        print("  export LETTA_API_URL='https://api.letta.com'  # Optional")
-        print("  export LETTA_CONVERSATION_ID='your_conversation_id'  # Optional")
+        print("Optional: BLUESKY_PDS_URL, LETTA_API_URL, LETTA_CONVERSATION_ID")
         exit(1)
     
     poller = BlueskyNotificationPoller(bluesky_handle, bluesky_password, letta_api_key, letta_agent_id, bluesky_pds_url, letta_api_url, letta_conversation_id)
-    poller.run(poll_interval=300)  # 5 minutes
+    poller.run(poll_interval=300)
