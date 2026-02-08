@@ -9,13 +9,17 @@ from datetime import datetime
 from pathlib import Path
 
 class BlueskyNotificationPoller:
-    def __init__(self, bluesky_token: str, letta_api_key: str, letta_agent_id: str, state_file: str = "state.json"):
-        self.bluesky_token = bluesky_token
+    def __init__(self, bluesky_handle: str, bluesky_password: str, letta_api_key: str, letta_agent_id: str, state_file: str = "state.json"):
+        self.bluesky_handle = bluesky_handle
+        self.bluesky_password = bluesky_password
         self.letta_api_key = letta_api_key
         self.letta_agent_id = letta_agent_id
         self.state_file = Path(state_file)
         self.bluesky_api_url = "https://api.bsky.app"
         self.letta_api_url = "http://localhost:8080"  # Adjust if needed
+        
+        # Session token will be set after authentication
+        self.session_token = None
         
         # Load or initialize state
         self.state = self._load_state()
@@ -36,10 +40,34 @@ class BlueskyNotificationPoller:
         with open(self.state_file, 'w') as f:
             json.dump(self.state, f, indent=2)
     
+    def _authenticate(self) -> bool:
+        """Authenticate with Bluesky and get session token"""
+        try:
+            response = requests.post(
+                f"{self.bluesky_api_url}/xrpc/com.atproto.server.createSession",
+                json={
+                    "identifier": self.bluesky_handle,
+                    "password": self.bluesky_password
+                },
+                timeout=10
+            )
+            response.raise_for_status()
+            data = response.json()
+            self.session_token = data.get("accessJwt")
+            print(f"[{datetime.now().isoformat()}] Successfully authenticated with Bluesky")
+            return True
+        except requests.RequestException as e:
+            print(f"Authentication error: {e}")
+            return False
+    
     def _get_notifications(self) -> dict:
         """Fetch notifications from Bluesky API"""
+        if not self.session_token:
+            if not self._authenticate():
+                return {"notifications": []}
+        
         headers = {
-            "Authorization": f"Bearer {self.bluesky_token}"
+            "Authorization": f"Bearer {self.session_token}"
         }
         params = {
             "limit": 50
@@ -60,6 +88,9 @@ class BlueskyNotificationPoller:
             return response.json()
         except requests.RequestException as e:
             print(f"Error fetching notifications: {e}")
+            # Clear token on auth errors so we re-authenticate next time
+            if response.status_code == 401:
+                self.session_token = None
             return {"notifications": []}
     
     def _send_to_letta(self, message: str):
@@ -137,6 +168,11 @@ class BlueskyNotificationPoller:
         """Run continuous polling loop (default: 5 minutes)"""
         print(f"Starting Bluesky notification poller (interval: {poll_interval}s)")
         
+        # Initial authentication
+        if not self._authenticate():
+            print("Failed to authenticate. Exiting.")
+            return
+        
         try:
             while True:
                 self.poll()
@@ -152,14 +188,15 @@ if __name__ == "__main__":
     import os
     
     # Load from environment variables
-    bluesky_token = os.getenv("BLUESKY_TOKEN")
+    bluesky_handle = os.getenv("BLUESKY_HANDLE")
+    bluesky_password = os.getenv("BLUESKY_PASSWORD")
     letta_api_key = os.getenv("LETTA_API_KEY")
     letta_agent_id = os.getenv("LETTA_AGENT_ID")
     
-    if not all([bluesky_token, letta_api_key, letta_agent_id]):
+    if not all([bluesky_handle, bluesky_password, letta_api_key, letta_agent_id]):
         print("Error: Missing required environment variables")
-        print("Required: BLUESKY_TOKEN, LETTA_API_KEY, LETTA_AGENT_ID")
+        print("Required: BLUESKY_HANDLE, BLUESKY_PASSWORD, LETTA_API_KEY, LETTA_AGENT_ID")
         exit(1)
     
-    poller = BlueskyNotificationPoller(bluesky_token, letta_api_key, letta_agent_id)
+    poller = BlueskyNotificationPoller(bluesky_handle, bluesky_password, letta_api_key, letta_agent_id)
     poller.run(poll_interval=300)  # 5 minutes
