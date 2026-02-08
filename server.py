@@ -112,9 +112,7 @@ class BlueskyNotificationPoller:
             "Content-Type": "application/json"
         }
         payload = {
-            "agent_id": self.letta_agent_id,
-            "message": message,
-            "role": "user"
+            "input": message
         }
         
         try:
@@ -224,7 +222,7 @@ if __name__ == "__main__":
         print("  export LETTA_API_KEY='your_key'")
         print("  export LETTA_AGENT_ID='your_id'")
         print("  export BLUESKY_PDS_URL='https://yapfest.club'  # Optional")
-        print("  export LETTA_API_URL='http://localhost:8080'  # Optional")
+        print("  export LETTA_API_URL='https://api.letta.com'  # Optional")
         exit(1)
     
     poller = BlueskyNotificationPoller(bluesky_handle, bluesky_password, letta_api_key, letta_agent_id, bluesky_pds_url, letta_api_url)
