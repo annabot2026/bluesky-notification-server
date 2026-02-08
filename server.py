@@ -25,10 +25,12 @@ class BlueskyNotificationPoller:
         self.letta_agent_id = letta_agent_id
         self.letta_conversation_id = letta_conversation_id
         self.state_file = Path(state_file)
-        self.bluesky_api_url = bluesky_pds_url
+        self.bluesky_pds_url = bluesky_pds_url  # Used for authentication
+        self.bluesky_api_url = "https://api.bsky.app"  # Always use main API for notifications
         self.letta_api_url = letta_api_url
         
-        print(f"[DEBUG] Using Bluesky PDS URL: {self.bluesky_api_url}")
+        print(f"[DEBUG] Using Bluesky PDS URL for auth: {self.bluesky_pds_url}")
+        print(f"[DEBUG] Using Bluesky API for notifications: {self.bluesky_api_url}")
         print(f"[DEBUG] Using Letta API URL: {self.letta_api_url}")
         if self.letta_conversation_id:
             print(f"[DEBUG] Using Letta Conversation ID: {self.letta_conversation_id}")
@@ -42,7 +44,7 @@ class BlueskyNotificationPoller:
         self.state = self._load_state()
     
     def _load_state(self) -> dict:
-        """Load last seen timestamp from state file"""
+        """Load last cursor from state file"""
         if self.state_file.exists():
             with open(self.state_file) as f:
                 state = json.load(f)
@@ -50,7 +52,7 @@ class BlueskyNotificationPoller:
                 return state
         print(f"[DEBUG] State file does not exist, initializing new state")
         return {
-            "last_seen_at": None,
+            "last_cursor": None,
             "last_check_time": None
         }
     
@@ -62,10 +64,10 @@ class BlueskyNotificationPoller:
             json.dump(self.state, f, indent=2)
     
     def _authenticate(self) -> bool:
-        """Authenticate with Bluesky and get session token"""
+        """Authenticate with Bluesky PDS and get session token"""
         try:
             response = requests.post(
-                f"{self.bluesky_api_url}/xrpc/com.atproto.server.createSession",
+                f"{self.bluesky_pds_url}/xrpc/com.atproto.server.createSession",
                 json={
                     "identifier": self.bluesky_handle,
                     "password": self.bluesky_password
@@ -82,7 +84,7 @@ class BlueskyNotificationPoller:
             return False
     
     def _get_notifications(self) -> dict:
-        """Fetch notifications from Bluesky API"""
+        """Fetch notifications from main Bluesky API"""
         if not self.session_token:
             if not self._authenticate():
                 return {"notifications": []}
@@ -94,12 +96,12 @@ class BlueskyNotificationPoller:
             "limit": 50
         }
         
-        # Use seenAt timestamp if we have one (for custom PDS that doesn't support cursor)
-        if self.state.get("last_seen_at"):
-            print(f"[DEBUG] Using seenAt: {self.state.get('last_seen_at')}")
-            params["seenAt"] = self.state["last_seen_at"]
+        # Include cursor if we have one
+        if self.state.get("last_cursor"):
+            print(f"[DEBUG] Using cursor: {self.state.get('last_cursor')}")
+            params["cursor"] = self.state["last_cursor"]
         else:
-            print(f"[DEBUG] No seenAt available, fetching from beginning")
+            print(f"[DEBUG] No cursor available, fetching from beginning")
         
         try:
             response = requests.get(
@@ -111,10 +113,10 @@ class BlueskyNotificationPoller:
             response.raise_for_status()
             result = response.json()
             print(f"[DEBUG] API response keys: {result.keys()}")
-            if "seenAt" in result:
-                print(f"[DEBUG] Received seenAt: {result['seenAt']}")
+            if "cursor" in result:
+                print(f"[DEBUG] Received cursor: {result['cursor']}")
             else:
-                print(f"[DEBUG] No seenAt in API response")
+                print(f"[DEBUG] No cursor in API response")
             return result
         except requests.RequestException as e:
             print(f"Error fetching notifications: {e}")
@@ -180,9 +182,9 @@ class BlueskyNotificationPoller:
             self._save_state()
             return
         
-        # Update seenAt timestamp for next poll
-        if "seenAt" in result:
-            self.state["last_seen_at"] = result["seenAt"]
+        # Update cursor for next poll
+        if "cursor" in result:
+            self.state["last_cursor"] = result["cursor"]
         
         # Format notification summary
         count = len(notifications)
