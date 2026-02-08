@@ -25,12 +25,10 @@ class BlueskyNotificationPoller:
         self.letta_agent_id = letta_agent_id
         self.letta_conversation_id = letta_conversation_id
         self.state_file = Path(state_file)
-        self.bluesky_pds_url = bluesky_pds_url  # Used for authentication
-        self.bluesky_api_url = "https://api.bsky.app"  # Always use main API for notifications
+        self.bluesky_pds_url = bluesky_pds_url  # Used for authentication and notifications
         self.letta_api_url = letta_api_url
         
-        print(f"[DEBUG] Using Bluesky PDS URL for auth: {self.bluesky_pds_url}")
-        print(f"[DEBUG] Using Bluesky API for notifications: {self.bluesky_api_url}")
+        print(f"[DEBUG] Using Bluesky PDS URL: {self.bluesky_pds_url}")
         print(f"[DEBUG] Using Letta API URL: {self.letta_api_url}")
         if self.letta_conversation_id:
             print(f"[DEBUG] Using Letta Conversation ID: {self.letta_conversation_id}")
@@ -44,7 +42,7 @@ class BlueskyNotificationPoller:
         self.state = self._load_state()
     
     def _load_state(self) -> dict:
-        """Load last cursor from state file"""
+        """Load state from file"""
         if self.state_file.exists():
             with open(self.state_file) as f:
                 state = json.load(f)
@@ -52,7 +50,6 @@ class BlueskyNotificationPoller:
                 return state
         print(f"[DEBUG] State file does not exist, initializing new state")
         return {
-            "last_cursor": None,
             "last_check_time": None
         }
     
@@ -84,7 +81,7 @@ class BlueskyNotificationPoller:
             return False
     
     def _get_notifications(self) -> dict:
-        """Fetch notifications from main Bluesky API"""
+        """Fetch notifications from Bluesky PDS"""
         if not self.session_token:
             if not self._authenticate():
                 return {"notifications": []}
@@ -96,16 +93,9 @@ class BlueskyNotificationPoller:
             "limit": 50
         }
         
-        # Include cursor if we have one
-        if self.state.get("last_cursor"):
-            print(f"[DEBUG] Using cursor: {self.state.get('last_cursor')}")
-            params["cursor"] = self.state["last_cursor"]
-        else:
-            print(f"[DEBUG] No cursor available, fetching from beginning")
-        
         try:
             response = requests.get(
-                f"{self.bluesky_api_url}/xrpc/app.bsky.notification.listNotifications",
+                f"{self.bluesky_pds_url}/xrpc/app.bsky.notification.listNotifications",
                 headers=headers,
                 params=params,
                 timeout=10
@@ -113,17 +103,35 @@ class BlueskyNotificationPoller:
             response.raise_for_status()
             result = response.json()
             print(f"[DEBUG] API response keys: {result.keys()}")
-            if "cursor" in result:
-                print(f"[DEBUG] Received cursor: {result['cursor']}")
-            else:
-                print(f"[DEBUG] No cursor in API response")
+            if "seenAt" in result:
+                print(f"[DEBUG] Received seenAt: {result['seenAt']}")
             return result
         except requests.RequestException as e:
             print(f"Error fetching notifications: {e}")
             # Clear token on auth errors so we re-authenticate next time
-            if response.status_code == 401:
+            if hasattr(e, 'response') and e.response.status_code == 401:
                 self.session_token = None
             return {"notifications": []}
+    
+    def _mark_seen(self, seen_at: str) -> bool:
+        """Mark notifications as seen up to the given timestamp"""
+        headers = {
+            "Authorization": f"Bearer {self.session_token}"
+        }
+        
+        try:
+            response = requests.post(
+                f"{self.bluesky_pds_url}/xrpc/app.bsky.notification.updateSeen",
+                headers=headers,
+                json={"seenAt": seen_at},
+                timeout=10
+            )
+            response.raise_for_status()
+            print(f"[DEBUG] Marked notifications as seen up to {seen_at}")
+            return True
+        except requests.RequestException as e:
+            print(f"Error marking notifications as seen: {e}")
+            return False
     
     def _send_to_letta(self, message: str):
         """Send notification message to Letta agent or conversation"""
@@ -182,10 +190,6 @@ class BlueskyNotificationPoller:
             self._save_state()
             return
         
-        # Update cursor for next poll
-        if "cursor" in result:
-            self.state["last_cursor"] = result["cursor"]
-        
         # Format notification summary
         count = len(notifications)
         message = f"🔔 You have {count} new Bluesky notification{'s' if count != 1 else ''}:\n\n"
@@ -198,6 +202,11 @@ class BlueskyNotificationPoller:
         
         print(f"[{datetime.now().isoformat()}] Found {count} new notifications, sending to Letta")
         self._send_to_letta(message)
+        
+        # Mark notifications as seen so next poll only gets new ones
+        if "seenAt" in result:
+            self._mark_seen(result["seenAt"])
+        
         self._save_state()
     
     def run(self, poll_interval: int = 300):
