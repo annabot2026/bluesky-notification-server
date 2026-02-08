@@ -11,9 +11,11 @@ from pathlib import Path
 
 try:
     from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
+    dotenv_loaded = load_dotenv()
+    print(f"[DEBUG] python-dotenv loaded: {dotenv_loaded}")
+except ImportError as e:
+    print(f"[DEBUG] python-dotenv import failed: {e}")
+    dotenv_loaded = False
 
 class BlueskyNotificationPoller:
     def __init__(self, bluesky_handle: str, bluesky_password: str, letta_api_key: str, letta_agent_id: str, state_file: str = "state.json"):
@@ -198,8 +200,14 @@ if __name__ == "__main__":
     letta_api_key = os.getenv("LETTA_API_KEY")
     letta_agent_id = os.getenv("LETTA_AGENT_ID")
     
+    # Debug output
+    print(f"[DEBUG] BLUESKY_HANDLE: {bluesky_handle}")
+    print(f"[DEBUG] BLUESKY_PASSWORD: {'*' * len(bluesky_password) if bluesky_password else None}")
+    print(f"[DEBUG] LETTA_API_KEY: {'*' * len(letta_api_key) if letta_api_key else None}")
+    print(f"[DEBUG] LETTA_AGENT_ID: {letta_agent_id}")
+    
     if not all([bluesky_handle, bluesky_password, letta_api_key, letta_agent_id]):
-        print("Error: Missing required environment variables")
+        print("\nError: Missing required environment variables")
         print("Required: BLUESKY_HANDLE, BLUESKY_PASSWORD, LETTA_API_KEY, LETTA_AGENT_ID")
         print("\nYou can set these in a .env file or export them:")
         print("  export BLUESKY_HANDLE='annabot2026'")
