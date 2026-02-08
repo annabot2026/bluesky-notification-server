@@ -18,16 +18,17 @@ except ImportError as e:
     dotenv_loaded = False
 
 class BlueskyNotificationPoller:
-    def __init__(self, bluesky_handle: str, bluesky_password: str, letta_api_key: str, letta_agent_id: str, bluesky_pds_url: str = "https://api.bsky.app", state_file: str = "state.json"):
+    def __init__(self, bluesky_handle: str, bluesky_password: str, letta_api_key: str, letta_agent_id: str, bluesky_pds_url: str = "https://api.bsky.app", letta_api_url: str = "http://localhost:8080", state_file: str = "state.json"):
         self.bluesky_handle = bluesky_handle
         self.bluesky_password = bluesky_password
         self.letta_api_key = letta_api_key
         self.letta_agent_id = letta_agent_id
         self.state_file = Path(state_file)
         self.bluesky_api_url = bluesky_pds_url
-        self.letta_api_url = "http://localhost:8080"  # Adjust if needed
+        self.letta_api_url = letta_api_url
         
-        print(f"[DEBUG] Using PDS URL: {self.bluesky_api_url}")
+        print(f"[DEBUG] Using Bluesky PDS URL: {self.bluesky_api_url}")
+        print(f"[DEBUG] Using Letta API URL: {self.letta_api_url}")
         
         # Session token will be set after authentication
         self.session_token = None
@@ -202,6 +203,7 @@ if __name__ == "__main__":
     letta_api_key = os.getenv("LETTA_API_KEY")
     letta_agent_id = os.getenv("LETTA_AGENT_ID")
     bluesky_pds_url = os.getenv("BLUESKY_PDS_URL", "https://api.bsky.app")
+    letta_api_url = os.getenv("LETTA_API_URL", "http://localhost:8080")
     
     # Debug output
     print(f"[DEBUG] BLUESKY_HANDLE: {bluesky_handle}")
@@ -209,18 +211,21 @@ if __name__ == "__main__":
     print(f"[DEBUG] LETTA_API_KEY: {'*' * len(letta_api_key) if letta_api_key else None}")
     print(f"[DEBUG] LETTA_AGENT_ID: {letta_agent_id}")
     print(f"[DEBUG] BLUESKY_PDS_URL: {bluesky_pds_url}")
+    print(f"[DEBUG] LETTA_API_URL: {letta_api_url}")
     
     if not all([bluesky_handle, bluesky_password, letta_api_key, letta_agent_id]):
         print("\nError: Missing required environment variables")
         print("Required: BLUESKY_HANDLE, BLUESKY_PASSWORD, LETTA_API_KEY, LETTA_AGENT_ID")
         print("Optional: BLUESKY_PDS_URL (defaults to https://api.bsky.app)")
+        print("Optional: LETTA_API_URL (defaults to http://localhost:8080)")
         print("\nYou can set these in a .env file or export them:")
         print("  export BLUESKY_HANDLE='anna.yapfest.club'")
         print("  export BLUESKY_PASSWORD='your_app_password'")
         print("  export LETTA_API_KEY='your_key'")
         print("  export LETTA_AGENT_ID='your_id'")
         print("  export BLUESKY_PDS_URL='https://yapfest.club'  # Optional")
+        print("  export LETTA_API_URL='http://localhost:8080'  # Optional")
         exit(1)
     
-    poller = BlueskyNotificationPoller(bluesky_handle, bluesky_password, letta_api_key, letta_agent_id, bluesky_pds_url)
+    poller = BlueskyNotificationPoller(bluesky_handle, bluesky_password, letta_api_key, letta_agent_id, bluesky_pds_url, letta_api_url)
     poller.run(poll_interval=300)  # 5 minutes
