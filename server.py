@@ -25,8 +25,9 @@ class BlueskyNotificationPoller:
         self.letta_agent_id = letta_agent_id
         self.letta_conversation_id = letta_conversation_id
         self.state_file = Path(state_file)
-        self.bluesky_pds_url = bluesky_pds_url  # Used for authentication and notifications
+        self.bluesky_pds_url = bluesky_pds_url
         self.letta_api_url = letta_api_url
+        self.max_tracked_ids = 1000  # Keep track of up to 1000 notification IDs
         
         print(f"[DEBUG] Using Bluesky PDS URL: {self.bluesky_pds_url}")
         print(f"[DEBUG] Using Letta API URL: {self.letta_api_url}")
@@ -46,17 +47,20 @@ class BlueskyNotificationPoller:
         if self.state_file.exists():
             with open(self.state_file) as f:
                 state = json.load(f)
-                print(f"[DEBUG] Loaded state from file: {state}")
+                print(f"[DEBUG] Loaded state from file, tracking {len(state.get('seen_notification_ids', []))} notification IDs")
                 return state
         print(f"[DEBUG] State file does not exist, initializing new state")
         return {
+            "seen_notification_ids": [],
             "last_check_time": None
         }
     
     def _save_state(self):
         """Save current state to file"""
         self.state["last_check_time"] = datetime.now().isoformat()
-        print(f"[DEBUG] Saving state to file: {self.state}")
+        # Keep state file size reasonable by limiting tracked IDs
+        if len(self.state.get("seen_notification_ids", [])) > self.max_tracked_ids:
+            self.state["seen_notification_ids"] = self.state["seen_notification_ids"][-self.max_tracked_ids:]
         with open(self.state_file, 'w') as f:
             json.dump(self.state, f, indent=2)
     
@@ -101,37 +105,13 @@ class BlueskyNotificationPoller:
                 timeout=10
             )
             response.raise_for_status()
-            result = response.json()
-            print(f"[DEBUG] API response keys: {result.keys()}")
-            if "seenAt" in result:
-                print(f"[DEBUG] Received seenAt: {result['seenAt']}")
-            return result
+            return response.json()
         except requests.RequestException as e:
             print(f"Error fetching notifications: {e}")
             # Clear token on auth errors so we re-authenticate next time
             if hasattr(e, 'response') and e.response.status_code == 401:
                 self.session_token = None
             return {"notifications": []}
-    
-    def _mark_seen(self, seen_at: str) -> bool:
-        """Mark notifications as seen up to the given timestamp"""
-        headers = {
-            "Authorization": f"Bearer {self.session_token}"
-        }
-        
-        try:
-            response = requests.post(
-                f"{self.bluesky_pds_url}/xrpc/app.bsky.notification.updateSeen",
-                headers=headers,
-                json={"seenAt": seen_at},
-                timeout=10
-            )
-            response.raise_for_status()
-            print(f"[DEBUG] Marked notifications as seen up to {seen_at}")
-            return True
-        except requests.RequestException as e:
-            print(f"Error marking notifications as seen: {e}")
-            return False
     
     def _send_to_letta(self, message: str):
         """Send notification message to Letta agent or conversation"""
@@ -185,27 +165,33 @@ class BlueskyNotificationPoller:
         result = self._get_notifications()
         notifications = result.get("notifications", [])
         
-        if not notifications:
-            print(f"[{datetime.now().isoformat()}] No new notifications")
+        # Filter out notifications we've already seen
+        seen_ids = set(self.state.get("seen_notification_ids", []))
+        new_notifications = [n for n in notifications if n.get("uri") not in seen_ids]
+        
+        if not new_notifications:
+            print(f"[{datetime.now().isoformat()}] No new notifications (received {len(notifications)}, all previously seen)")
             self._save_state()
             return
         
         # Format notification summary
-        count = len(notifications)
+        count = len(new_notifications)
         message = f"🔔 You have {count} new Bluesky notification{'s' if count != 1 else ''}:\n\n"
         
-        for notif in notifications[:10]:  # Limit to 10 most recent
+        for notif in new_notifications[:10]:  # Limit to 10 most recent
             message += f"• {self._format_notification(notif)}\n"
         
         if count > 10:
             message += f"\n... and {count - 10} more"
         
-        print(f"[{datetime.now().isoformat()}] Found {count} new notifications, sending to Letta")
+        print(f"[{datetime.now().isoformat()}] Found {count} new notifications (out of {len(notifications)} total), sending to Letta")
         self._send_to_letta(message)
         
-        # Mark notifications as seen so next poll only gets new ones
-        if "seenAt" in result:
-            self._mark_seen(result["seenAt"])
+        # Track all notifications we just received
+        for notif in notifications:
+            notif_uri = notif.get("uri")
+            if notif_uri and notif_uri not in seen_ids:
+                self.state["seen_notification_ids"].append(notif_uri)
         
         self._save_state()
     
